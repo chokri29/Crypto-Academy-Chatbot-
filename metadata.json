@@ -1,0 +1,6 @@
+{
+  "name": "Crypto Academy Chatbot",
+  "description": "An interactive crypto and blockchain educational chatbot previewer, sandbox, and customizer with a copy-pasteable embed system for crypto-academy.online.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
