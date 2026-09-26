@@ -23,13 +23,34 @@ import WebsiteSimulator from './components/WebsiteSimulator';
 import ChatWidget from './components/ChatWidget';
 import CryptoTools from './components/CryptoTools';
 
-// Helper to parse settings from query string if present (for standalone/iframe pages)
+// Robust helper to sanitize and normalize hex color codes (handles %, %23, missing #, etc.)
+const sanitizeHexColor = (val: string | null | undefined, fallback: string): string => {
+  if (!val) return fallback;
+  try {
+    let clean = decodeURIComponent(val).trim();
+    if (clean.includes('%')) {
+      clean = decodeURIComponent(clean);
+    }
+    clean = clean.replace(/[^0-9A-Fa-f]/g, '');
+    if (clean.length === 3) {
+      clean = clean.split('').map(c => c + c).join('');
+    }
+    if (clean.length === 6) {
+      return `#${clean.toUpperCase()}`;
+    }
+    return fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+// Helper to parse settings from query string or localStorage
 const getInitialSettings = (): ChatSettings => {
   const defaultSettings: ChatSettings = {
     name: "Academy Expert",
     personality: "intermediate",
     customGreeting: "Welcome to Crypto Academy Online! Ask me about DeFi, wallets, consensus mechanisms, or protocols.",
-    themeColor: COLOR_PRESETS[0].hex, // Default is Bitcoin Gold
+    themeColor: COLOR_PRESETS[0].hex, // Default is Bitcoin Gold #F7931A
     borderRadius: "lg",
     headerType: "gradient",
     avatarStyle: "crypto",
@@ -48,46 +69,68 @@ const getInitialSettings = (): ChatSettings => {
 
   try {
     const params = new URLSearchParams(window.location.search);
-    const name = params.get('name');
-    const personality = params.get('personality');
-    const customGreeting = params.get('customGreeting');
-    const themeColor = params.get('themeColor');
-    const borderRadius = params.get('borderRadius');
-    const headerType = params.get('headerType');
-    const avatarStyle = params.get('avatarStyle');
-    const launcherIcon = params.get('launcherIcon');
-    const position = params.get('position');
-    const size = params.get('size');
-    const customInstruction = params.get('customInstruction');
-    const suggestedPromptsStr = params.get('suggestedPrompts');
+    const hasUrlParams = window.location.search.includes('standalone=true') || params.has('themeColor') || params.has('name');
 
-    let parsedPrompts = defaultSettings.suggestedPrompts;
-    if (suggestedPromptsStr) {
+    // If standalone / iframe query params exist, prioritize them
+    if (hasUrlParams) {
+      const name = params.get('name');
+      const personality = params.get('personality');
+      const customGreeting = params.get('customGreeting');
+      const rawThemeColor = params.get('themeColor');
+      const borderRadius = params.get('borderRadius');
+      const headerType = params.get('headerType');
+      const avatarStyle = params.get('avatarStyle');
+      const launcherIcon = params.get('launcherIcon');
+      const position = params.get('position');
+      const size = params.get('size');
+      const customInstruction = params.get('customInstruction');
+      const suggestedPromptsStr = params.get('suggestedPrompts');
+
+      let parsedPrompts = defaultSettings.suggestedPrompts;
+      if (suggestedPromptsStr) {
+        try {
+          parsedPrompts = JSON.parse(suggestedPromptsStr);
+        } catch (e) {
+          console.warn("Failed to parse suggested prompts from URL:", e);
+        }
+      }
+
+      return {
+        name: name || defaultSettings.name,
+        personality: (personality as any) || defaultSettings.personality,
+        customGreeting: customGreeting || defaultSettings.customGreeting,
+        themeColor: sanitizeHexColor(rawThemeColor, defaultSettings.themeColor),
+        borderRadius: (borderRadius as any) || defaultSettings.borderRadius,
+        headerType: (headerType as any) || defaultSettings.headerType,
+        avatarStyle: (avatarStyle as any) || defaultSettings.avatarStyle,
+        launcherIcon: (launcherIcon as any) || defaultSettings.launcherIcon,
+        position: (position as any) || defaultSettings.position,
+        size: (size as any) || defaultSettings.size,
+        enableSound: defaultSettings.enableSound,
+        enableSpeech: defaultSettings.enableSpeech,
+        customInstruction: customInstruction || defaultSettings.customInstruction,
+        suggestedPrompts: parsedPrompts,
+      };
+    }
+
+    // Otherwise check localStorage in Hub preview mode
+    const cached = localStorage.getItem('crypto_academy_bot_settings');
+    if (cached) {
       try {
-        parsedPrompts = JSON.parse(suggestedPromptsStr);
+        const parsed = JSON.parse(cached);
+        return {
+          ...defaultSettings,
+          ...parsed,
+          themeColor: sanitizeHexColor(parsed.themeColor, defaultSettings.themeColor)
+        };
       } catch (e) {
-        console.warn("Failed to parse suggested prompts from URL:", e);
+        console.warn("Could not parse saved settings from localStorage:", e);
       }
     }
 
-    return {
-      name: name || defaultSettings.name,
-      personality: (personality as any) || defaultSettings.personality,
-      customGreeting: customGreeting || defaultSettings.customGreeting,
-      themeColor: themeColor ? (themeColor.startsWith('#') || themeColor.startsWith('%23') ? themeColor : `#${themeColor}`) : defaultSettings.themeColor,
-      borderRadius: (borderRadius as any) || defaultSettings.borderRadius,
-      headerType: (headerType as any) || defaultSettings.headerType,
-      avatarStyle: (avatarStyle as any) || defaultSettings.avatarStyle,
-      launcherIcon: (launcherIcon as any) || defaultSettings.launcherIcon,
-      position: (position as any) || defaultSettings.position,
-      size: (size as any) || defaultSettings.size,
-      enableSound: defaultSettings.enableSound,
-      enableSpeech: defaultSettings.enableSpeech,
-      customInstruction: customInstruction || defaultSettings.customInstruction,
-      suggestedPrompts: parsedPrompts,
-    };
+    return defaultSettings;
   } catch (e) {
-    console.error("Error parsing URL search params:", e);
+    console.error("Error parsing settings:", e);
     return defaultSettings;
   }
 };
@@ -100,6 +143,17 @@ export default function App() {
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [appUrl, setAppUrl] = useState<string>('');
   const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  // Save updated settings to localStorage in preview mode
+  useEffect(() => {
+    if (!window.location.search.includes('standalone=true')) {
+      try {
+        localStorage.setItem('crypto_academy_bot_settings', JSON.stringify(settings));
+      } catch (e) {
+        // Storage unavailable
+      }
+    }
+  }, [settings]);
 
   // Check backend server config on mount
   useEffect(() => {
@@ -132,6 +186,8 @@ export default function App() {
     ? currentAppUrl.replace('ais-dev-', 'ais-pre-') 
     : currentAppUrl;
 
+  const cleanThemeHex = settings.themeColor.replace('#', '');
+
   // Build dynamic URL with query parameters for theme configuration
   const buildConfigQueryString = () => {
     const params = new URLSearchParams();
@@ -139,7 +195,7 @@ export default function App() {
     params.set('name', settings.name);
     params.set('personality', settings.personality);
     params.set('customGreeting', settings.customGreeting);
-    params.set('themeColor', settings.themeColor.replace('#', ''));
+    params.set('themeColor', cleanThemeHex);
     params.set('borderRadius', settings.borderRadius);
     params.set('headerType', settings.headerType);
     params.set('avatarStyle', settings.avatarStyle);
@@ -150,10 +206,12 @@ export default function App() {
       params.set('customInstruction', settings.customInstruction);
     }
     params.set('suggestedPrompts', JSON.stringify(settings.suggestedPrompts));
+    params.set('_v', Date.now().toString());
     return params.toString();
   };
 
   const configQueryString = buildConfigQueryString();
+  const directPreviewUrl = `${publicAppUrl}/?${configQueryString}`;
   
   // Standard floating script
   const embedScriptCode = `<!-- Crypto Academy Educational Bot Chat Widget integration -->
@@ -226,14 +284,15 @@ export default function App() {
       "name=" + encodeURIComponent(${JSON.stringify(settings.name)}),
       "personality=" + encodeURIComponent(${JSON.stringify(settings.personality)}),
       "customGreeting=" + encodeURIComponent(${JSON.stringify(settings.customGreeting)}),
-      "themeColor=" + encodeURIComponent(${JSON.stringify(settings.themeColor.replace('#', ''))}),
+      "themeColor=" + encodeURIComponent(${JSON.stringify(cleanThemeHex)}),
       "borderRadius=" + encodeURIComponent(${JSON.stringify(settings.borderRadius)}),
       "headerType=" + encodeURIComponent(${JSON.stringify(settings.headerType)}),
       "avatarStyle=" + encodeURIComponent(${JSON.stringify(settings.avatarStyle)}),
       "launcherIcon=" + encodeURIComponent(${JSON.stringify(settings.launcherIcon)}),
       "position=" + encodeURIComponent(${JSON.stringify(settings.position)}),
       "size=" + encodeURIComponent(${JSON.stringify(settings.size)}),
-      "suggestedPrompts=" + encodeURIComponent(${JSON.stringify(JSON.stringify(settings.suggestedPrompts))})
+      "suggestedPrompts=" + encodeURIComponent(${JSON.stringify(JSON.stringify(settings.suggestedPrompts))}),
+      "_v=" + Date.now()
     ];
     iframe.src = "${publicAppUrl}/?" + queryParams.join(String.fromCharCode(38));
     container.appendChild(iframe);
@@ -273,23 +332,34 @@ export default function App() {
         z-index: 999999;
       }
       #crypto-chatbot-iframe {
-        width: 380px;
-        height: 540px;
+        width: ${settings.size === 'compact' ? '340px' : settings.size === 'large' ? '420px' : '380px'};
+        height: ${settings.size === 'compact' ? '460px' : settings.size === 'large' ? '600px' : '540px'};
         border: none;
-        border-radius: 16px;
+        border-radius: ${settings.borderRadius === 'none' ? '0px' : settings.borderRadius === 'sm' ? '6px' : settings.borderRadius === 'md' ? '12px' : settings.borderRadius === 'lg' ? '16px' : '24px'};
         box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
         background-color: #020617;
         display: none;
         position: absolute;
         bottom: 74px;
         right: 0;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+        opacity: 0;
+        transform: translateY(10px);
       }
-      #crypto-chatbot-iframe.widget-visible { display: block !important; }
+      #crypto-chatbot-iframe.widget-visible {
+        display: block !important;
+        opacity: 1 !important;
+        transform: translateY(0) !important;
+      }
       #crypto-chatbot-launcher {
         width: 56px; height: 56px; border-radius: 50%;
         background-color: ${settings.themeColor}; color: #FFFFFF; font-size: 24px;
         border: none; cursor: pointer; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+        display: flex; align-items: center; justify-content: center;
+        transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
       }
+      #crypto-chatbot-launcher:hover { transform: scale(1.06); }
+      #crypto-chatbot-launcher:active { transform: scale(0.95); }
     \`;
     document.head.appendChild(style);
 
@@ -303,7 +373,16 @@ export default function App() {
       "standalone=true",
       "name=" + encodeURIComponent(${JSON.stringify(settings.name)}),
       "personality=" + encodeURIComponent(${JSON.stringify(settings.personality)}),
-      "themeColor=" + encodeURIComponent(${JSON.stringify(settings.themeColor.replace('#', ''))})
+      "customGreeting=" + encodeURIComponent(${JSON.stringify(settings.customGreeting)}),
+      "themeColor=" + encodeURIComponent(${JSON.stringify(cleanThemeHex)}),
+      "borderRadius=" + encodeURIComponent(${JSON.stringify(settings.borderRadius)}),
+      "headerType=" + encodeURIComponent(${JSON.stringify(settings.headerType)}),
+      "avatarStyle=" + encodeURIComponent(${JSON.stringify(settings.avatarStyle)}),
+      "launcherIcon=" + encodeURIComponent(${JSON.stringify(settings.launcherIcon)}),
+      "position=" + encodeURIComponent(${JSON.stringify(settings.position)}),
+      "size=" + encodeURIComponent(${JSON.stringify(settings.size)}),
+      "suggestedPrompts=" + encodeURIComponent(${JSON.stringify(JSON.stringify(settings.suggestedPrompts))}),
+      "_v=" + Date.now()
     ];
     iframe.src = "${publicAppUrl}/?" + queryParams.join(String.fromCharCode(38));
     container.appendChild(iframe);
@@ -518,17 +597,38 @@ export function CryptoAcademyBot() {
                 
                 {/* Free Blogger Tier Box */}
                 <div className="p-4 bg-emerald-950/20 border border-emerald-900/40 rounded-xl space-y-3">
-                  <h4 className="font-semibold text-emerald-400 flex items-center gap-2">
-                    <Globe className="w-4 h-4 text-emerald-400 animate-pulse" />
-                    <span>Blogger 100% Free Lifetime Setup Guide</span>
-                  </h4>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <h4 className="font-semibold text-emerald-400 flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-emerald-400 animate-pulse" />
+                      <span>Blogger 100% Free Lifetime Setup Guide</span>
+                    </h4>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-400">Active Theme Color:</span>
+                      <span 
+                        className="w-4 h-4 rounded-full border border-white/40 shadow-xs inline-block"
+                        style={{ backgroundColor: settings.themeColor }}
+                      ></span>
+                      <span className="font-mono text-xs font-bold text-slate-200 uppercase">{settings.themeColor}</span>
+                    </div>
+                  </div>
                   <p className="text-[11px] sm:text-xs text-slate-300 leading-relaxed font-sans">
                     Run this educational chatbot completely <strong>free of charge, forever</strong> on your Blogger site (<a href="https://www.crypto-academy.online/" target="_blank" rel="noopener noreferrer" className="text-emerald-300 underline">crypto-academy.online</a>)!
                   </p>
                   <ul className="list-disc pl-5 text-[11px] text-slate-400 space-y-1.5 leading-relaxed font-sans">
+                    <li><strong className="text-emerald-300">Auto Cache-Busting:</strong> Scripts below include dynamic cache-busting tokens (<code className="text-emerald-400 font-mono">_v</code>) so theme color changes appear instantly on your website without stale browser caches!</li>
                     <li><strong className="text-emerald-300">Free Gemini API:</strong> Up to 1,500 free requests/day with Google AI Studio.</li>
-                    <li><strong className="text-emerald-300">Zero Authentication Barriers:</strong> Generated code uses public preview endpoints so incognito visitors and Facebook Lite mobile users can chat instantly.</li>
                   </ul>
+                  <div className="pt-1 flex flex-wrap items-center gap-2">
+                    <a
+                      href={directPreviewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-750 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Globe className="w-3.5 h-3.5 text-orange-400" />
+                      <span>Open Standalone Preview in New Tab</span>
+                    </a>
+                  </div>
                 </div>
 
                 {/* Sub-tabs for Framework Selectors */}

@@ -8,6 +8,10 @@ export interface ChatMessage {
   text: string;
   timestamp: Date;
   feedback?: 'like' | 'dislike';
+  isError?: boolean;
+  canRetry?: boolean;
+  retryText?: string;
+  technicalError?: string;
 }
 
 export interface ChatSettings {

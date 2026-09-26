@@ -132,7 +132,7 @@ app.post("/api/chat", async (req, res) => {
     const systemInstruction = buildSystemInstruction(parsedSettings);
 
     const modelsToTry = [
-      "gemini-3.6-flash",
+      "gemini-3.8-flash",
       "gemini-flash-latest",
       "gemini-3.1-flash-lite"
     ];
@@ -151,28 +151,35 @@ app.post("/api/chat", async (req, res) => {
             temperature: 0.7,
           }
         });
-        if (response) {
+        if (response && response.text) {
           console.log(`Successfully generated content using model: ${modelName}`);
           break;
         }
       } catch (err: any) {
-        console.warn(`Model ${modelName} failed or threw 503:`, err?.message || err);
+        console.warn(`Model ${modelName} failed or threw error:`, err?.message || err);
         lastError = err;
       }
     }
 
-    if (!response) {
-      throw lastError || new Error("All available AI models are currently overloaded. Please try again in a few moments.");
+    if (!response || !response.text) {
+      throw lastError || new Error("AI model service temporarily busy.");
     }
 
-    const responseText = response.text || "I was unable to formulate a response due to a system constraint. Please try rephrasing.";
+    const responseText = response.text || "I was unable to formulate a response due to a temporary system constraint. Please try rephrasing your question.";
     
     return res.json({ response: responseText });
   } catch (err: any) {
     console.error("Gemini API Error:", err);
+    
+    // Provide a polished, visitor-friendly message for site visitors
+    const visitorMessage = "Our AI Assistant is momentarily taking a brief pause to sync with the blockchain or experiencing high student volume. Please tap 'Retry Question' in a moment, or explore our curated learning guides!";
+    
     return res.status(500).json({ 
-      error: err.message || "An unexpected error occurred while communicating with the AI service.",
-      needsApiKey: !process.env.GEMINI_API_KEY
+      error: visitorMessage,
+      visitorMessage,
+      canRetry: true,
+      needsApiKey: !process.env.GEMINI_API_KEY,
+      technicalDetails: process.env.NODE_ENV !== "production" ? err?.message : undefined
     });
   }
 });

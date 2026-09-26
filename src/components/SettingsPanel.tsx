@@ -243,15 +243,31 @@ export default function SettingsPanel({ settings, onChange }: SettingsPanelProps
 
       {/* Aesthetic & Colors Settings */}
       <div className="space-y-4">
-        <label className="text-xs uppercase tracking-wider font-mono font-bold text-slate-400 flex items-center gap-2">
-          <Palette className="w-4 h-4 text-orange-400" />
-          <span>Aesthetic & Branding</span>
+        <label className="text-xs uppercase tracking-wider font-mono font-bold text-slate-400 flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <Palette className="w-4 h-4 text-orange-400" />
+            <span>Aesthetic & Branding</span>
+          </span>
+          <span className="text-[10px] text-emerald-400 font-mono font-semibold flex items-center gap-1 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-900/40">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            Syncs Live
+          </span>
         </label>
 
         <div className="space-y-4">
           {/* Custom Presets */}
           <div>
-            <label className="block text-xs text-slate-400 font-sans font-semibold mb-2">Theme Accent Color</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-xs text-slate-400 font-sans font-semibold">Theme Accent Color</label>
+              <div className="flex items-center gap-1.5">
+                <span 
+                  className="w-3.5 h-3.5 rounded-full border border-white/50 inline-block shadow-sm"
+                  style={{ backgroundColor: settings.themeColor }}
+                ></span>
+                <span className="text-[10px] font-mono font-bold text-slate-300">{settings.themeColor}</span>
+              </div>
+            </div>
+            
             <div className="grid grid-cols-8 gap-2">
               {COLOR_PRESETS.map((p) => (
                 <button
@@ -259,12 +275,12 @@ export default function SettingsPanel({ settings, onChange }: SettingsPanelProps
                   id={`theme-preset-${p.name.replace(/\s+/g, '-').toLowerCase()}`}
                   onClick={() => handleTextChange('themeColor', p.hex)}
                   className={`w-7 h-7 rounded-full border-2 transition-transform cursor-pointer shadow-inner relative flex items-center justify-center ${
-                    settings.themeColor === p.hex ? 'border-white scale-110 shadow-lg' : 'border-slate-800 hover:scale-105'
+                    settings.themeColor.toUpperCase() === p.hex.toUpperCase() ? 'border-white scale-110 shadow-lg' : 'border-slate-800 hover:scale-105'
                   }`}
                   style={{ backgroundColor: p.hex }}
-                  title={p.name}
+                  title={`${p.name} (${p.hex})`}
                 >
-                  {settings.themeColor === p.hex && (
+                  {settings.themeColor.toUpperCase() === p.hex.toUpperCase() && (
                     <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
                   )}
                 </button>
@@ -274,14 +290,26 @@ export default function SettingsPanel({ settings, onChange }: SettingsPanelProps
             {/* Custom HEX input */}
             <div className="flex items-center gap-2 mt-2.5">
               <span className="text-slate-500 text-xs font-mono">Custom Hex:</span>
-              <input
-                id="input-theme-hex"
-                type="text"
-                value={settings.themeColor}
-                onChange={(e) => handleTextChange('themeColor', e.target.value)}
-                placeholder="#3b82f6"
-                className="bg-slate-950 text-slate-200 font-mono text-xs px-2.5 py-1.5 rounded border border-slate-800 outline-none w-28 uppercase focus:border-orange-500/40"
-              />
+              <div className="relative flex items-center">
+                <input
+                  id="input-theme-hex"
+                  type="text"
+                  value={settings.themeColor}
+                  onChange={(e) => {
+                    let val = e.target.value;
+                    if (!val.startsWith('#') && val.trim().length > 0) {
+                      val = `#${val}`;
+                    }
+                    handleTextChange('themeColor', val);
+                  }}
+                  placeholder="#F7931A"
+                  maxLength={7}
+                  className="bg-slate-950 text-slate-200 font-mono text-xs px-2.5 py-1.5 rounded border border-slate-800 outline-none w-28 uppercase focus:border-orange-500/40"
+                />
+              </div>
+              <span className="text-[10px] text-slate-500 font-sans italic">
+                Updates embed snippet immediately
+              </span>
             </div>
           </div>
 
